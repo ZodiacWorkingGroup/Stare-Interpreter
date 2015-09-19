@@ -1,5 +1,12 @@
 import sys
 import getch
+from stack import *
+
+
+class output:
+    def __init__(self, result, stack):
+        self.result = result
+        self.stack = stack
 
 
 class Equality:
@@ -15,7 +22,7 @@ class Num(Equality):
         return "Num( "+self.val+" )"
 
     def eval(self, stack):
-        return float(self)
+        return output(float(self), stack)
 
 
 class List(Equality):
@@ -29,18 +36,19 @@ class Condition(Equality):
         self.val = val
 
     def __repr__(self):
-        return "Cond( "+self.condop+str(self.val)+" )"
+        return "Cond( "+self.condop+', '+str(self.val)+" )"
 
     def eval(self, stack):
         if self.condop == "_":
-            return len(stack) == self.val.eval(stack)
+            out = self.val.eval(stack)
+            return output(len(stack) == out.result, out.stack)
         elif self.condop == '#':
-            return stack[-1] == self.val.eval(stack)
+            out = self.val.eval(stack)
+            return output(stack.peek() == out.result, out.stack)
         elif self.condop == '*':
-            return True
+            return output(True, stack)
         else:
             raise SyntaxError('"'+self.condop+'" is not a valid condition operator.')
-
 
 
 class Procedure(Equality):
@@ -89,7 +97,7 @@ class Procedure(Equality):
         elif self.proc in ['&', 'BWAND']:
             a = stack.pop()
             b = stack.pop()
-            stack.push(b&a)
+            stack.push(b & a)
 
         elif self.proc in ['|', 'BWOR']:
             a = stack.pop()
@@ -110,10 +118,15 @@ class Procedure(Equality):
             stack.pop()
 
         elif self.proc in ['P', 'PUSH']:
-            stack.push(self.args[0].eval(stack))
+            arg = self.args[0].eval(stack)
+            stack.push(arg.result)
+            stack = arg.stack
 
         elif self.proc in ['.', 'PUTCH']:
             print(chr(stack.pop()), end='')
+
+        elif self.proc in [',', 'GETCH']:
+            stack.push(ord(getch.getch()))
 
         elif self.proc in ['PRINTS']:
             popped = ''
@@ -134,16 +147,20 @@ class Procedure(Equality):
         elif self.proc in [';', 'HALT']:
             sys.exit()
 
-        return stack
+        return output(True, stack)
 
 
 class Instructions(Equality):
     def __init__(self, *instructions):
         self.instructions = instructions
 
+    def __repr__(self):
+        return ', '.join([repr(x) for x in self.instructions])
+
     def eval(self, stack):
         for x in self.instructions:
-            x.eval(stack)
+            out = x.eval(stack)
+        return output(True, out.stack)
 
 
 class Line(Equality):
@@ -151,6 +168,16 @@ class Line(Equality):
         self.cond = cond
         self.instructions = instructions
 
+    def __repr__(self):
+        return 'Line( '+repr(self.cond)+', '+repr(self.instructions)+' )'
+
     def eval(self, stack):
         if self.cond.eval(stack):
-            self.instuctions.eval(stack)
+            out = self.instructions.eval(stack)
+            stack = out.stack
+        return output(True, stack)
+
+if __name__ == '__main__':
+    stack = stack([x for x in range(100, 110)])
+    print(Line(Condition('*', Num('42')), Instructions(Procedure('DUP'))))
+    print(Line(Condition('*', Num('42')), Instructions(Procedure('DUP'))).eval(stack).stack.__repr__())
